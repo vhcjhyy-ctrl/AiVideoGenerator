@@ -44,9 +44,8 @@ import com.basitbhatti.videogenerator.utils.STATUS_FAILED
 import com.basitbhatti.videogenerator.utils.STATUS_IN_QUEUE
 import com.basitbhatti.videogenerator.utils.STATUS_SUCCESS
 import com.basitbhatti.videogenerator.viewmodel.MainViewModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 private val Papyrus = Color(0xFFF4E8CE)
 private val Gold = Color(0xFFD6AE55)
@@ -55,10 +54,12 @@ private val CardNile = Color(0xFF1C2A28)
 
 @Composable
 fun QueueScreen(modifier: Modifier = Modifier, viewModel: MainViewModel) {
-    LaunchedEffect(Unit) {
-        CoroutineScope(Dispatchers.IO).launch {
-            viewModel.updateList()
+    LaunchedEffect(viewModel) {
+        // Keep the existing queue screen and status API; refresh active jobs every 5 seconds.
+        while (isActive) {
             viewModel.updateRequests()
+            viewModel.updateList()
+            delay(5_000)
         }
     }
 
