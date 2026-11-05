@@ -34,11 +34,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.basitbhatti.videogenerator.R
 import com.basitbhatti.videogenerator.db.TextRequest
+import com.basitbhatti.videogenerator.utils.STATUS_FAILED
 import com.basitbhatti.videogenerator.utils.STATUS_IN_QUEUE
 import com.basitbhatti.videogenerator.utils.STATUS_SUCCESS
 import com.basitbhatti.videogenerator.viewmodel.MainViewModel
@@ -46,9 +48,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+private val Papyrus = Color(0xFFF4E8CE)
+private val Gold = Color(0xFFD6AE55)
+private val DarkNile = Color(0xFF101B1B)
+private val CardNile = Color(0xFF1C2A28)
+
 @Composable
 fun QueueScreen(modifier: Modifier = Modifier, viewModel: MainViewModel) {
-
     LaunchedEffect(Unit) {
         CoroutineScope(Dispatchers.IO).launch {
             viewModel.updateList()
@@ -65,102 +71,144 @@ fun QueueScreen(modifier: Modifier = Modifier, viewModel: MainViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(DarkNile)
     ) {
-
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp)
+                .padding(horizontal = 22.dp, vertical = 22.dp)
         ) {
             Text(
-                text = "Queue",
-                modifier
-                    .align(Alignment.CenterVertically)
-                    .padding(start = 15.dp),
-                fontSize = 18.sp
+                text = "سجل الفيديوهات",
+                color = Papyrus,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(5.dp))
+            Text(
+                text = "تابع طلباتك ونتائج الفيديو التي أنشأتها",
+                color = Color(0xFFB9A77F),
+                fontSize = 12.sp
             )
         }
 
-        if (requests.value != null) {
-            LazyColumn {
+        if (!requests.value.isNullOrEmpty()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    start = 8.dp, end = 8.dp, bottom = 18.dp
+                )
+            ) {
                 items(requests.value!!) { item ->
                     QueueItem(item = item, onDelete = {
                         viewModel.deleteRequest(item)
                     })
                 }
             }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = "𓂀", color = Gold, fontSize = 44.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "لا توجد طلبات حتى الآن",
+                        color = Papyrus,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "ستظهر هنا الفيديوهات التي تطلب إنشاءها.",
+                        color = Color(0xFFB9A77F),
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
     }
-
 }
-
 
 @Composable
 fun QueueItem(modifier: Modifier = Modifier, item: TextRequest, onDelete: () -> Unit) {
-
     val context = LocalContext.current
 
     val statusBg = when (item.requestStatus) {
-
-        STATUS_SUCCESS -> {
-            Color(0xFFBDEEB9)
-        }
-
-        STATUS_IN_QUEUE -> {
-            Color(0xFFEEDFB9)
-        }
-
-        else -> {
-            Color(0xFFEEB9B9)
-        }
-
+        STATUS_SUCCESS -> Color(0xFF315842)
+        STATUS_IN_QUEUE -> Color(0xFF6E592D)
+        STATUS_FAILED -> Color(0xFF653B37)
+        else -> Color(0xFF3A4541)
+    }
+    val statusLabel = when (item.requestStatus) {
+        STATUS_SUCCESS -> "اكتمل"
+        STATUS_IN_QUEUE -> "قيد الانتظار"
+        STATUS_FAILED -> "تعذّر التنفيذ"
+        else -> item.requestStatus
     }
 
     Card(
         modifier = modifier
-            .padding(vertical = 7.5.dp, horizontal = 15.dp)
+            .padding(vertical = 7.dp, horizontal = 10.dp)
             .fillMaxWidth()
-            .height(120.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF3F3F3)
-        )
+            .height(132.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = CardNile),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
-
         Row(
-            modifier = modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-
-            Image(
-                painter = painterResource(R.drawable.video),
-                contentDescription = "Icon Video",
+            Box(
                 modifier = Modifier
-                    .padding(horizontal = 15.dp)
-                    .size(75.dp),
-            )
+                    .size(76.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF293936)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.video),
+                    contentDescription = "Video",
+                    modifier = Modifier.size(53.dp)
+                )
+            }
 
-            Column {
-                Text(text = item.prompt, fontSize = 16.sp, maxLines = 2)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 13.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = item.prompt,
+                    color = Papyrus,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2
+                )
                 Spacer(Modifier.height(10.dp))
-                Row (
-                    modifier = Modifier.height(30.dp),
+                Row(
+                    modifier = Modifier.height(34.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-
                     Text(
-                        text = item.requestStatus,
-                        modifier
+                        text = statusLabel,
+                        color = Papyrus,
+                        modifier = Modifier
                             .clip(RoundedCornerShape(30.dp))
                             .background(statusBg)
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        fontSize = 14.sp
+                            .padding(horizontal = 11.dp, vertical = 6.dp),
+                        fontSize = 11.sp
                     )
 
                     if (item.requestStatus.equals(STATUS_SUCCESS)) {
-
-                        Spacer(Modifier.width(10.dp))
-
+                        Spacer(Modifier.width(8.dp))
                         Row(
                             modifier = Modifier
                                 .clickable {
@@ -169,51 +217,43 @@ fun QueueItem(modifier: Modifier = Modifier, item: TextRequest, onDelete: () -> 
                                     context.startActivity(intent)
                                 }
                                 .clip(RoundedCornerShape(30.dp))
-                                .background(Color.LightGray)
-                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                                .background(Gold)
+                                .padding(horizontal = 9.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
-
                             Image(
                                 painter = painterResource(R.drawable.ic_play),
                                 contentDescription = "Play",
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
-
                             Text(
-                                text = "View Result",
-                                modifier
-                                    .padding(horizontal = 5.dp),
-                                fontSize = 12.sp
+                                text = "عرض",
+                                color = DarkNile,
+                                modifier = Modifier.padding(start = 4.dp),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .width(24.dp)
-                            .padding(start = 5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.delete),
-                            contentDescription = "Play",
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clickable {
-                                    onDelete()
-                                }
-                        )
-                    }
-
                 }
             }
 
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(28.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.delete),
+                    contentDescription = "Delete",
+                    modifier = Modifier
+                        .size(19.dp)
+                        .clickable { onDelete() }
+                )
+            }
         }
-
-
     }
 }
 
@@ -221,16 +261,13 @@ fun QueueItem(modifier: Modifier = Modifier, item: TextRequest, onDelete: () -> 
 @Composable
 private fun Preview() {
     QueueItem(
-        item =
-        TextRequest(
+        item = TextRequest(
             0,
             "Create an ad video for my clothing brand",
             STATUS_SUCCESS,
             "inQueue",
             "1234"
         ),
-        onDelete = {
-
-        }
+        onDelete = {}
     )
 }
