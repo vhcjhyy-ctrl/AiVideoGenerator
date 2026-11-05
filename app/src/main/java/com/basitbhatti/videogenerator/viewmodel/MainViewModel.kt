@@ -14,12 +14,13 @@ import com.basitbhatti.videogenerator.utils.STATUS_IN_QUEUE
 import com.basitbhatti.videogenerator.utils.STATUS_SUCCESS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainViewModel(val repository: RequestRepository) : ViewModel() {
 
     val textApi = RetrofitInstance.textApi
 
-    private var _list = MutableLiveData<List<TextRequest>>()
+    private val _list = MutableLiveData<List<TextRequest>>()
     val listRequests: LiveData<List<TextRequest>> = _list
 
     fun sendTextRequest(body: TextRequestBody) {
@@ -30,8 +31,8 @@ class MainViewModel(val repository: RequestRepository) : ViewModel() {
         }
     }
 
-    fun deleteRequest(request: TextRequest){
-        viewModelScope.launch (Dispatchers.IO) {
+    fun deleteRequest(request: TextRequest) {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.deleteRequest(request)
             updateList()
         }
@@ -41,8 +42,14 @@ class MainViewModel(val repository: RequestRepository) : ViewModel() {
         return try {
             val response = textApi.sendTextRequest(body)
             val initialResponse = response.body()
-            if (initialResponse != null) {
-                Log.d("TAGRESPONSE", "initialResponse : ${initialResponse}")
+
+            if (response.isSuccessful && initialResponse != null &&
+                initialResponse.uuid.isNotBlank()
+            ) {
+                Log.d(
+                    "TAGRESPONSE",
+                    "Generation request accepted: status=${initialResponse.status}"
+                )
                 TextRequest(
                     0,
                     body.text_prompt,
@@ -50,59 +57,95 @@ class MainViewModel(val repository: RequestRepository) : ViewModel() {
                     initialResponse.status,
                     initialResponse.uuid
                 )
-
             } else {
-                Log.d("TAGRESPONSE", "initial error : ${response}}")
+                val errorDetails = response.errorBody()?.string()?.take(300).orEmpty()
+                Log.e(
+                    "TAGRESPONSE",
+                    "Generation request rejected: HTTP ${response.code()} $errorDetails"
+                )
                 TextRequest(0, body.text_prompt, STATUS_FAILED, "", "")
             }
-
-
-
         } catch (e: Exception) {
-            Log.d("TAGRESPONSE", "E : ${e}}")
-
+            Log.e("TAGRESPONSE", "Could not submit generation request", e)
             TextRequest(0, body.text_prompt, STATUS_FAILED, "", "")
         }
-
-        updateList()
     }
 
     suspend fun updateList() {
-        _list.postValue(repository.getRequests())
+        val requests = withContext(Dispatchers.IO) {
+            repository.getRequests()
+        }
+        _list.postValue(requests)
     }
 
-    suspend fun updateRequests() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val requests = repository.getRequests().filter { it.requestStatus == STATUS_IN_QUEUE }
+    /**
+     * Refreshes queued generation jobs once. QueueScreen calls this repeatedly while visible,
+     * so the existing Runway status endpoint is polled until a terminal state is returned.
+     */
+    suspend fun updateRequests() = withContext(Dispatchers.IO) {
+        val requests = repository.getRequests()
+            .filter { it.requestStatus == STATUS_IN_QUEUE }
 
-            for (req in requests) {
-                val response = textApi.getStatus(req.uuid)
-                if (response.isSuccessful) {
-
-                    val item = response.body()!!
-                    val status = item.status
-
-                    if (status != null) {
-
-                        //in queue, success
-
-                        if (status.contains("in queue") or status.contains("submitted")) {
-                            req.requestStatus = STATUS_IN_QUEUE
-                        } else if (status.contains("success")) {
-                            req.requestStatus = STATUS_SUCCESS
-                            req.url = item.url
-                        } else {
-                            req.requestStatus = STATUS_FAILED
-                        }
-
-                        repository.updateRequest(req)
-                        Log.d("TAGSTATUS", "${item.uuid} : ${item.status}")
-
-                    }
-                }
+        for (request in requests) {
+            if (request.uuid.isBlank()) {
+                request.requestStatus = STATUS_FAILED
+                repository.updateRequest(request)
+                continue
             }
 
-        }
-    }
+            try {
+                val response = textApi.getStatus(request.uuid)
+                val result = response.body()
 
+                if (response.isSuccessful && result != null) {
+                    val apiStatus = result.status.trim().lowercase()
+
+                    when {
+                        apiStatus.contains("success") ||
+                            apiStatus.contains("complete") -> {
+                            if (result.url.isNotBlank()) {
+                                request.requestStatus = STATUS_SUCCESS
+                                request.url = result.url
+                            }
+                        }
+
+                        apiStatus.contains("fail") ||
+                            apiStatus.contains("error") ||
+                            apiStatus.contains("cancel") -> {
+                            request.requestStatus = STATUS_FAILED
+                        }
+
+                        // "submitted", "pending", "processing", "in queue",
+                        // and unknown non-terminal states remain queued.
+                        else -> request.requestStatus = STATUS_IN_QUEUE
+                    }
+
+                    repository.updateRequest(request)
+                    Log.d(
+                        "TAGSTATUS",
+                        "Request ${request.uuid}: ${result.status}, progress=${result.progress}"
+                    )
+                } else {
+                    Log.w(
+                        "TAGSTATUS",
+                        "Status check failed: HTTP ${response.code()} for request ${request.uuid}"
+                    )
+                    // Authentication/permission/not-found errors are terminal for this request.
+                    if (response.code() == 401 ||
+                        response.code() == 403 ||
+                        response.code() == 404
+                    ) {
+                        request.requestStatus = STATUS_FAILED
+                        repository.updateRequest(request)
+                    }
+                    // Transient failures (including rate limits and server errors) stay queued.
+                }
+            } catch (e: Exception) {
+                // Network interruptions must not falsely mark a still-running job as failed.
+                Log.w("TAGSTATUS", "Temporary status check error for ${request.uuid}", e)
+            }
+        }
+
+        _list.postValue(repository.getRequests())
+    }
 }
